@@ -1,20 +1,35 @@
 package com.example;
 
+import java.util.ArrayList;
+import java.util.Collection;
+
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
-import com.example.service.CustomUserDetailsService;
+import com.example.dao.UserDao;
+import com.example.entity.User;
+import com.sun.enterprise.module.bootstrap.Main;
 
 @Configuration
 @EnableGlobalMethodSecurity(prePostEnabled = true)
 public class SecurityConfiguration extends WebSecurityConfigurerAdapter {
 
 	@Autowired
-	private CustomUserDetailsService customUserDetailsService;
+	private UserDao userDao;
+
+	@Autowired
+	private UserDetailsService userDetailsService;
 
 	/**
 	 * This section defines the user accounts which can be used for
@@ -22,10 +37,36 @@ public class SecurityConfiguration extends WebSecurityConfigurerAdapter {
 	 * 
 	 * @see org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter#configure(org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder)
 	 */
+
+	@Bean
+	public BCryptPasswordEncoder passwordEncoder() {
+		return new BCryptPasswordEncoder();
+	}
+
+	@Bean
+	protected UserDetailsService userDetailsService() {
+		return new UserDetailsService() {
+
+			@Override
+			public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+				User user = userDao.findByUsername(username);
+				if (user == null) {
+					throw new UsernameNotFoundException("No user found with username: " + username);
+				}
+
+				Collection<GrantedAuthority> authorities = new ArrayList<GrantedAuthority>();
+				authorities.add(new SimpleGrantedAuthority(user.getRole().getName().name()));
+
+				return new org.springframework.security.core.userdetails.User(user.getUsername(), user.getPassword(),
+						true, true, true, true, authorities);
+			}
+
+		};
+	}
+
 	@Override
 	protected void configure(AuthenticationManagerBuilder auth) throws Exception {
-
-		auth.userDetailsService(customUserDetailsService);
+		auth.userDetailsService(userDetailsService).passwordEncoder(passwordEncoder());
 	}
 
 	/**
@@ -50,5 +91,9 @@ public class SecurityConfiguration extends WebSecurityConfigurerAdapter {
 		http.httpBasic().and().authorizeRequests().//
 				antMatchers("/").hasRole("USER").and().//
 				csrf().disable();
+	}
+	
+	public static void main(String[] args) {
+		System.out.println(new BCryptPasswordEncoder().encode("edgar"));
 	}
 }
